@@ -55,6 +55,7 @@ _DEVICE_STATE_SID = "devicestate"
 _MESSAGE_BOARD_SID = "messageboard"
 _MESSAGE_BOARD_WIRE_SID = "messageBoard"
 _REMOTE_CONTROL_SID = "remotecontrol"
+_CHILD_MODE_SID = "childMode"
 
 # The real device pushes the message board with camel casing while the Profile
 # spells it lower case, so both are accepted.
@@ -323,6 +324,26 @@ async def _set_volume(device: DeviceContext, data: Mapping[str, Any]) -> None:
     await device.async_send_service(_SPEAKER_SID, {"volume": level})
 
 
+async def _set_mute(device: DeviceContext, data: Mapping[str, Any]) -> None:
+    """Mirror ``speaker.mute`` (verified: ACK errcode=0 + deviceDataChanged push)."""
+    raw = data.get("mute")
+    if isinstance(raw, str):
+        lowered = raw.strip().lower()
+        if lowered in ("true", "1", "on", "yes"):
+            muted = True
+        elif lowered in ("false", "0", "off", "no"):
+            muted = False
+        else:
+            return
+    elif isinstance(raw, bool):
+        muted = raw
+    elif isinstance(raw, (int, float)):
+        muted = bool(raw)
+    else:
+        return
+    await device.async_send_service(_SPEAKER_SID, {"mute": muted})
+
+
 async def _select_source(device: DeviceContext, data: Mapping[str, Any]) -> None:
     source = data.get("source")
     if not isinstance(source, str) or not source.strip():
@@ -411,6 +432,32 @@ def _mute_binary_sensor() -> EntitySpec:
     )
 
 
+
+
+def _child_mode_binary_sensor() -> EntitySpec:
+    """儿童模式开关（childMode.mode）。
+
+    电视实时推送 ``childMode`` 服务，``mode`` 为 ``"ON"`` / ``"OFF"`` 字符串。
+    这里只做**只读**展示 —— 写入路径尚未在真机验证，故不暴露控制。
+    """
+    def state(device: DeviceContext) -> Mapping[str, Any]:
+        raw = _value(device, _CHILD_MODE_SID, "mode")
+        if isinstance(raw, str):
+            lowered = raw.strip().upper()
+            if lowered in ("ON", "TRUE", "1"):
+                return {"is_on": True}
+            if lowered in ("OFF", "FALSE", "0"):
+                return {"is_on": False}
+        return {"is_on": None}
+    return EntitySpec(
+        platform="binary_sensor",
+        key="child_mode",
+        name="儿童模式",
+        state=state,
+        metadata={"entity_category": "diagnostic"},
+    )
+
+
 class ProductV0A2Adapter:
     """Keep all V0A2 entity and command choices in this file."""
 
@@ -430,6 +477,7 @@ class ProductV0A2Adapter:
                 actions["turn_off"] = _turn_off
             if context.has_service(_SPEAKER_SID):
                 actions["volume"] = _set_volume
+                actions["mute"] = _set_mute
             if context.has_service(_INPUT_SOURCE_SID):
                 actions["select_source"] = _select_source
 
@@ -448,6 +496,8 @@ class ProductV0A2Adapter:
             entities.append(_brightness_sensor())
         if context.has_service(_SPEAKER_SID):
             entities.append(_mute_binary_sensor())
+            if context.has_service(_CHILD_MODE_SID):
+                entities.append(_child_mode_binary_sensor())
             entities.append(
                 _text_sensor(_SPEAKER_SID, "equalizer", "音效模式", "sound_equalizer")
             )
