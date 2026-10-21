@@ -376,10 +376,14 @@ async def _select_picture_mode(device: DeviceContext, data: Mapping[str, Any]) -
 def _picture_mode_select() -> EntitySpec:
     """画面模式（screen.mode），真机验证可写。
 
-    验证记录：电视原为 ``PICTURE``，下发 ``{"mode": "STANDARD"}`` 后，
-    云端 ``screen.mode`` 由 ``PICTURE`` 变为 ``STANDARD``，且
-    ``reported_timestamp`` 从 ``20261021T044645Z`` 更新到 ``20261021T051455Z``
-    —— 即电视真的回推了新值，不是乐观更新。
+    验证记录（两次独立下发，云端 ``screen.mode`` 与 ``reported_timestamp``
+    都真的变了，不是乐观更新）：
+
+        PICTURE  (ts 20261021T044645Z)
+          -> 下发 {"mode": "STANDARD"}
+        STANDARD (ts 20261021T051455Z)
+          -> 下发 {"mode": "VIVID"}
+        VIVID    (ts 20261021T051755Z)
 
     注意：状态回推有约 5-10 分钟延迟，下发后不要立刻断言失败。
     """
