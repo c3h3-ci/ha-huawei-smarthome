@@ -373,6 +373,42 @@ async def _select_picture_mode(device: DeviceContext, data: Mapping[str, Any]) -
     await device.async_send_service(_SCREEN_SID, {"mode": option.strip()})
 
 
+def _child_mode_switch() -> EntitySpec:
+    """儿童模式开关（childMode.mode）。
+
+    真机验证：下发 ``{"mode": "ON"}`` 时云端返回 ``errcode=-1``（看起来是
+    "命令被拒"），但电视**随后真的回推了 mode=ON**，reported_timestamp 由
+    20261021T044645Z 更新到 20261021T074121Z —— 命令实际生效，只是返回码
+    不准（异步命令的假拒绝）。``{"mode": "OFF"}`` 同理。
+
+    因此这里按"命令实际生效"处理。副作用：HA 调用时会看到一条命令被拒的
+    报错日志，但状态最终由电视推送更新过来。
+    """
+    def state(device: DeviceContext) -> Mapping[str, Any]:
+        raw = _value(device, _CHILD_MODE_SID, "mode")
+        if isinstance(raw, str):
+            u = raw.strip().upper()
+            if u in ("ON", "LOCK_ON", "TRUE", "1"):
+                return {"is_on": True}
+            if u in ("OFF", "FALSE", "0"):
+                return {"is_on": False}
+        return {"is_on": None}
+
+    async def turn_on(device, data):
+        await device.async_send_service(_CHILD_MODE_SID, {"mode": "ON"})
+
+    async def turn_off(device, data):
+        await device.async_send_service(_CHILD_MODE_SID, {"mode": "OFF"})
+
+    return EntitySpec(
+        platform="switch",
+        key="child_mode_switch",
+        name="儿童模式",
+        state=state,
+        actions={"turn_on": turn_on, "turn_off": turn_off},
+    )
+
+
 def _picture_mode_select() -> EntitySpec:
     """画面模式（screen.mode），真机验证可写。
 
@@ -597,6 +633,7 @@ class ProductV0A2Adapter:
             entities.append(_mute_binary_sensor())
             if context.has_service(_CHILD_MODE_SID):
                 entities.append(_child_mode_binary_sensor())
+                entities.append(_child_mode_switch())
             entities.append(_sound_mode_select())
         if context.has_service(_INPUT_SOURCE_SID):
             entities.append(
