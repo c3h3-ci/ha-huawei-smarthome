@@ -351,6 +351,51 @@ async def _select_source(device: DeviceContext, data: Mapping[str, Any]) -> None
     await device.async_send_service(_INPUT_SOURCE_SID, {"name": source.strip()})
 
 
+
+
+# 画面模式的可选值取自插件反编译（hdpartner）与真机推送；
+# 写入路径见文件头注释：screen.mode {"mode": ...} 已确认可生效。
+_PICTURE_MODES: tuple[str, ...] = (
+    "STANDARD",
+    "PICTURE",
+    "VIVID",
+    "SPORTS",
+    "GAME",
+    "USER",
+    "SOFT_LIGHT",
+)
+
+
+async def _select_picture_mode(device: DeviceContext, data: Mapping[str, Any]) -> None:
+    option = data.get("option")
+    if not isinstance(option, str) or option.strip() not in _PICTURE_MODES:
+        return
+    await device.async_send_service(_SCREEN_SID, {"mode": option.strip()})
+
+
+def _picture_mode_select() -> EntitySpec:
+    """画面模式（screen.mode），真机验证可写。
+
+    验证记录：电视原为 ``PICTURE``，下发 ``{"mode": "STANDARD"}`` 后，
+    云端 ``screen.mode`` 由 ``PICTURE`` 变为 ``STANDARD``，且
+    ``reported_timestamp`` 从 ``20261021T044645Z`` 更新到 ``20261021T051455Z``
+    —— 即电视真的回推了新值，不是乐观更新。
+
+    注意：状态回推有约 5-10 分钟延迟，下发后不要立刻断言失败。
+    """
+    def state(device: DeviceContext) -> Mapping[str, Any]:
+        raw = _value(device, _SCREEN_SID, "mode")
+        if isinstance(raw, str) and raw.strip() in _PICTURE_MODES:
+            return {"current_option": raw.strip()}
+        return {"current_option": None}
+    return EntitySpec(
+        platform="select",
+        key="picture_mode",
+        name="画面模式",
+        state=state,
+        metadata={"options": _PICTURE_MODES},
+        actions={"select_option": _select_picture_mode},
+    )
 def _text_sensor(sid: str, field_name: str, name: str, key: str) -> EntitySpec:
     def state(device: DeviceContext) -> Mapping[str, Any]:
         value = _value(device, sid, field_name)
@@ -494,6 +539,7 @@ class ProductV0A2Adapter:
         # --- sensors --------------------------------------------------------
         if context.has_service(_SCREEN_SID):
             entities.append(_brightness_sensor())
+            entities.append(_picture_mode_select())
         if context.has_service(_SPEAKER_SID):
             entities.append(_mute_binary_sensor())
             if context.has_service(_CHILD_MODE_SID):
