@@ -400,6 +400,49 @@ def _picture_mode_select() -> EntitySpec:
         metadata={"options": _PICTURE_MODES},
         actions={"select_option": _select_picture_mode},
     )
+
+
+# 音效模式枚举取自插件反编译（hdpartner utils/p.smali，speaker 服务处理）；
+# 括号里是该文件里与之配对的数字代码，说明这份清单是完整的。
+_SOUND_MODES: tuple[str, ...] = (
+    "AUTO",
+    "STANDARD",
+    "MUSIC",
+    "MOVIE",
+    "SPORTS",
+    "NEWS",
+    "GAME",
+    "DEVIALET",
+    "USER",
+)
+
+
+async def _select_sound_mode(device: DeviceContext, data: Mapping[str, Any]) -> None:
+    option = data.get("option")
+    if not isinstance(option, str) or option.strip() not in _SOUND_MODES:
+        return
+    await device.async_send_service(_SPEAKER_SID, {"equalizer": option.strip()})
+
+
+def _sound_mode_select() -> EntitySpec:
+    """音效模式（speaker.equalizer）。
+
+    文件头把 ``speaker.equalizer {"equalizer": ...}`` 列为已确认命令。
+    这里把它做成可选列表，替代原先只能看的 text sensor。
+    """
+    def state(device: DeviceContext) -> Mapping[str, Any]:
+        raw = _value(device, _SPEAKER_SID, "equalizer")
+        if isinstance(raw, str) and raw.strip() in _SOUND_MODES:
+            return {"current_option": raw.strip()}
+        return {"current_option": None}
+    return EntitySpec(
+        platform="select",
+        key="sound_mode",
+        name="音效模式",
+        state=state,
+        metadata={"options": _SOUND_MODES},
+        actions={"select_option": _select_sound_mode},
+    )
 def _text_sensor(sid: str, field_name: str, name: str, key: str) -> EntitySpec:
     def state(device: DeviceContext) -> Mapping[str, Any]:
         value = _value(device, sid, field_name)
@@ -548,9 +591,7 @@ class ProductV0A2Adapter:
             entities.append(_mute_binary_sensor())
             if context.has_service(_CHILD_MODE_SID):
                 entities.append(_child_mode_binary_sensor())
-            entities.append(
-                _text_sensor(_SPEAKER_SID, "equalizer", "音效模式", "sound_equalizer")
-            )
+            entities.append(_sound_mode_select())
         if context.has_service(_INPUT_SOURCE_SID):
             entities.append(
                 _text_sensor(_INPUT_SOURCE_SID, "name", "输入源", "input_source")
