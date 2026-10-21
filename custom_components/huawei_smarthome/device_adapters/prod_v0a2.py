@@ -429,6 +429,12 @@ def _sound_mode_select() -> EntitySpec:
 
     文件头把 ``speaker.equalizer {"equalizer": ...}`` 列为已确认命令。
     这里把它做成可选列表，替代原先只能看的 text sensor。
+
+    验证记录（云端 ``speaker.equalizer`` 与 ``reported_timestamp`` 都变了）：
+
+        AUTO  (ts 20261021T050300Z)
+          -> 下发 {"equalizer": "MUSIC"}
+        MUSIC (ts 20261021T054435Z)
     """
     def state(device: DeviceContext) -> Mapping[str, Any]:
         raw = _value(device, _SPEAKER_SID, "equalizer")
